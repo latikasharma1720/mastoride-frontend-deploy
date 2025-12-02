@@ -29,16 +29,16 @@ export default function Signup() {
 
       try {
         // ✅ Updated to deployed backend
-        const response = await fetch(`${API_BASE}/api/auth/signup`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            email: email,
-            password: password,
-          }),
-        });
+        const response = await fetch("/api/auth/signup", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    email: email,
+    password: password,
+  }),
+});
 
         const data = await response.json();
 

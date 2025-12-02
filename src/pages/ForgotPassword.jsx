@@ -32,14 +32,12 @@ export default function ForgotPassword() {
       setLoading(true);
 
       // ✅ Call the deployed backend's forgot-password endpoint
-      const response = await fetch(
-        `${API_BASE}/api/auth/forgot-password`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: trimmed }),
-        }
-      );
+      const response = await fetch("/api/auth/forgot-password", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ email: trimmed }),
+});
+
 
       const data = await response.json();
 

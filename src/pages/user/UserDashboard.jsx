@@ -226,8 +226,10 @@ export default function UserDashboard() {
   // 🔁 This effect creates & updates a booking in the backend (Kept same, only URL changed)
   useEffect(() => {
     if (!currentUser || !badgesInitialized) return;
+    // Avoid calling backend when no fare is calculated yet
+    if (!fare) return;
 
-    setTimeout(() => {
+    const timer = setTimeout(() => {
       (async () => {
         try {
           // Simulate payment success, then persist booking to backend
@@ -253,11 +255,17 @@ export default function UserDashboard() {
           };
 
           // Basic client-side validation before hitting backend
-          if (!payload.pickup || !payload.dropoff || !payload.rideDate || !payload.rideTime || !payload.studentEmail) {
+          if (
+            !payload.pickup ||
+            !payload.dropoff ||
+            !payload.rideDate ||
+            !payload.rideTime ||
+            !payload.studentEmail
+          ) {
             pushToast("Please complete ride details before payment.", "error");
           } else {
             // ✅ Create booking on deployed backend
-            const createRes = await fetch(`${API_BASE}/api/booking`, {
+            const createRes = await fetch(`${API_BASE}/api/admin/users`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify(payload),
@@ -270,7 +278,7 @@ export default function UserDashboard() {
               const bookingId = createData.booking?._id;
               // Mark booking completed to generate ride history
               if (bookingId) {
-                await fetch(`${API_BASE}/api/booking/${bookingId}`, {
+                await fetch(`${API_BASE}/api/admin/users/${bookingId}`, {
                   method: "PUT",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({
@@ -300,6 +308,8 @@ export default function UserDashboard() {
         }
       })();
     }, 800);
+
+    return () => clearTimeout(timer);
   }, [currentUser, badgesInitialized, fare, ride, settings, profile, pushToast]);
 
   if (!authChecked) return null;

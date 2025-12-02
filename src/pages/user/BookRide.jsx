@@ -37,11 +37,11 @@ export default function BookRide() {
     }
 
     try {
-      const response = await fetch(`${API_BASE}/api/booking`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+     const response = await fetch("/api/booking", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+  },
         body: JSON.stringify({
           studentId: user?.email?.split("@")[0] || "student",
           studentEmail: user?.email || "",
