@@ -2,9 +2,6 @@ import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar";
 
-// ✅ Deployed backend base URL (Railway)
-const API_BASE = "https://mastoride-web-dev-production-d469.up.railway.app";
-
 export default function Signup() {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
@@ -17,48 +14,62 @@ export default function Signup() {
     e.preventDefault();
 
     const errs = {};
-    if (!/\S+@\S+\.\S+/.test(email)) errs.email = "Enter a valid email.";
-    if (!email.endsWith("@pfw.edu")) errs.email = "Please use your @pfw.edu email.";
-    if (!password || password.length < 8) errs.password = "Minimum 8 characters.";
-    if (password !== confirm) errs.confirm = "Passwords do not match.";
+
+    // basic validations
+    if (!/\S+@\S+\.\S+/.test(email)) {
+      errs.email = "Enter a valid email.";
+    } else if (!email.endsWith("@pfw.edu")) {
+      errs.email = "Please use your @pfw.edu email.";
+    }
+
+    if (!password || password.length < 8) {
+      errs.password = "Minimum 8 characters.";
+    }
+
+    if (password !== confirm) {
+      errs.confirm = "Passwords do not match.";
+    }
 
     setErrors(errs);
 
-    if (Object.keys(errs).length === 0) {
-      setLoading(true);
+    // if any errors, don’t call API
+    if (Object.keys(errs).length > 0) return;
 
-      try {
-        // ✅ Updated to deployed backend
-        const response = await fetch("/api/auth/signup", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-  },
-  body: JSON.stringify({
-    email: email,
-    password: password,
-  }),
-});
+    setLoading(true);
 
-        const data = await response.json();
+    try {
+      // Call relative /api path – Vercel will proxy this to Railway
+      const response = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email,
+          password,
+        }),
+      });
 
-        if (response.ok) {
-          alert("✅ Account created successfully! User ID: " + data.userId);
+      const data = await response.json();
 
-          navigate("/login", {
-            state: { message: "Account created! Please log in." },
-          });
-        } else {
-          setErrors({ api: data.error || "Signup failed" });
-        }
-      } catch (error) {
-        console.error("Signup request error:", error);
-        setErrors({
-          api: "Cannot connect to server. Make sure the deployed backend is reachable.",
+      if (response.ok) {
+        alert("✅ Account created successfully! User ID: " + data.userId);
+
+        navigate("/login", {
+          state: { message: "Account created! Please log in." },
         });
-      } finally {
-        setLoading(false);
+      } else {
+        setErrors({
+          api: data.error || "Signup failed. Please try again.",
+        });
       }
+    } catch (error) {
+      console.error("Signup request error:", error);
+      setErrors({
+        api: "Cannot connect to server. Make sure the deployed backend is reachable.",
+      });
+    } finally {
+      setLoading(false);
     }
   };
 

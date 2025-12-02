@@ -3,9 +3,6 @@ import Navbar from "../../components/Navbar";
 import Footer from "../../components/Footer";
 import { getUser } from "../../utils/session";
 
-// ✅ Deployed backend base URL (Railway)
-const API_BASE = "https://mastoride-web-dev-production-d469.up.railway.app";
-
 export default function BookRide() {
   const user = getUser();
   const [ride, setRide] = useState({
@@ -37,11 +34,11 @@ export default function BookRide() {
     }
 
     try {
-     const response = await fetch("/api/booking", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-  },
+      const response = await fetch("/api/booking", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           studentId: user?.email?.split("@")[0] || "student",
           studentEmail: user?.email || "",

@@ -7,9 +7,6 @@ import { useToast } from "../../components/ui-kit";
 import { getProfile, saveProfile, getSettings, saveSettings } from "../../utils/data";
 import MapBlock from "../../components/MapBlock";
 
-// ✅ Deployed backend base URL (Railway)
-const API_BASE = "https://mastoride-web-dev-production-d469.up.railway.app";
-
 const NAV_ITEMS = [
   { id: "profile", label: "Profile", icon: "👤" },
   { id: "book", label: "Book Ride", icon: "🚗" },
@@ -264,8 +261,8 @@ export default function UserDashboard() {
           ) {
             pushToast("Please complete ride details before payment.", "error");
           } else {
-            // ✅ Create booking on deployed backend
-            const createRes = await fetch(`${API_BASE}/api/admin/users`, {
+            // ✅ Create booking on deployed backend via Vercel proxy
+            const createRes = await fetch("/api/admin/users", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify(payload),
@@ -278,7 +275,7 @@ export default function UserDashboard() {
               const bookingId = createData.booking?._id;
               // Mark booking completed to generate ride history
               if (bookingId) {
-                await fetch(`${API_BASE}/api/admin/users/${bookingId}`, {
+                await fetch(`/api/admin/users/${bookingId}`, {
                   method: "PUT",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({

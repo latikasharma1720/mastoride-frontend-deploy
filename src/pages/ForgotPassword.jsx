@@ -2,9 +2,6 @@ import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import Navbar from "../components/Navbar";
 
-// ✅ Deployed backend base URL (Railway)
-const API_BASE = "https://mastoride-web-dev-production-d469.up.railway.app";
-
 export default function ForgotPassword() {
   const [email, setEmail] = useState("");
   const [msg, setMsg] = useState("");
@@ -31,13 +28,12 @@ export default function ForgotPassword() {
     try {
       setLoading(true);
 
-      // ✅ Call the deployed backend's forgot-password endpoint
+      // ✅ Call proxied endpoint – Vercel rewrites /api → Railway
       const response = await fetch("/api/auth/forgot-password", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ email: trimmed }),
-});
-
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: trimmed }),
+      });
 
       const data = await response.json();
 

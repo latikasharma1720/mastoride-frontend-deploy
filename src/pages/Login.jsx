@@ -3,9 +3,6 @@ import { useNavigate, useLocation, Link } from "react-router-dom";
 import { setUser } from "../utils/session";
 import Navbar from "../components/Navbar";
 
-// ✅ Deployed backend base URL (Railway)
-const API_BASE = "https://mastoride-web-dev-production-d469.up.railway.app";
-
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -26,6 +23,7 @@ export default function Login() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
     const errs = {};
 
     if (!/\S+@\S+\.\S+/.test(email)) {
@@ -37,13 +35,11 @@ export default function Login() {
 
     setErrors(errs);
 
-    if (Object.keys(errs).length !== 0) {
-      return;
-    }
+    if (Object.keys(errs).length !== 0) return;
 
     const emailLower = email.trim().toLowerCase();
 
-    // ✅ KEEP EXISTING ADMIN SHORTCUT
+    // ✅ Keep admin login bypass (local testing)
     if (emailLower === "admin@mastoride.app") {
       setUser({
         id: "a1",
@@ -55,21 +51,20 @@ export default function Login() {
       return;
     }
 
-    // ✅ Normal users → talk to deployed backend
     try {
       setLoading(true);
 
+      // ✅ Proxy request through Vercel → Railway (no API_BASE!)
       const response = await fetch("/api/auth/login", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-  },
-  body: JSON.stringify({
-    email: emailLower,
-    password: password,
-  }),
-});
-
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: emailLower,
+          password,
+        }),
+      });
 
       const data = await response.json();
 
@@ -78,7 +73,7 @@ export default function Login() {
         return;
       }
 
-      // Save user from DB into session
+      // Save user session
       setUser({
         id: data.user.id,
         name: data.user.name,
@@ -88,6 +83,7 @@ export default function Login() {
         loginCount: data.user.loginCount,
       });
 
+      // Redirect based on user role
       if (data.user.role === "admin") {
         navigate("/admin/profile", { replace: true });
       } else {
@@ -108,7 +104,7 @@ export default function Login() {
       <Navbar />
       <div className="modern-login-page">
         <div className="modern-login-layout">
-          {/* Left animated image */}
+          {/* Left Image */}
           <div className="login-image-container">
             <img
               src="/assets/images/Login Graphic.png"
@@ -117,9 +113,8 @@ export default function Login() {
             />
           </div>
 
-          {/* Right: login container */}
+          {/* Right login card */}
           <div className="modern-login-container">
-            {/* Success Message */}
             {successMsg && (
               <div className="success-banner">
                 <svg
@@ -137,7 +132,6 @@ export default function Login() {
               </div>
             )}
 
-            {/* Login Card */}
             <div className="modern-login-card">
               <div className="login-header">
                 <h1 className="split-heading">
@@ -146,9 +140,8 @@ export default function Login() {
                 </h1>
               </div>
 
-              {/* Form */}
               <form className="modern-login-form" onSubmit={handleSubmit}>
-                {/* Email Field */}
+                {/* Email */}
                 <div className="modern-field">
                   <label htmlFor="email">PFW Email</label>
                   <input
@@ -165,7 +158,7 @@ export default function Login() {
                   )}
                 </div>
 
-                {/* Password Field */}
+                {/* Password */}
                 <div className="modern-field">
                   <label htmlFor="password">Password</label>
                   <input
@@ -189,7 +182,7 @@ export default function Login() {
                   </div>
                 )}
 
-                {/* Remember Me & Forgot Password */}
+                {/* Options */}
                 <div className="login-options">
                   <label className="remember-checkbox">
                     <input
@@ -200,12 +193,13 @@ export default function Login() {
                     />
                     <span>Remember me</span>
                   </label>
+
                   <Link to="/forgot-password" className="forgot-link">
                     Lost your password?
                   </Link>
                 </div>
 
-                {/* Submit Button */}
+                {/* Submit */}
                 <button
                   type="submit"
                   className="modern-login-btn"
@@ -214,7 +208,6 @@ export default function Login() {
                   {loading ? "Logging in..." : "Login"}
                 </button>
 
-                {/* Sign Up Link */}
                 <div className="signup-prompt">
                   Not a member? <Link to="/signup">Register today</Link>
                 </div>

@@ -151,7 +151,7 @@ function PieChart({ data, labels, colors, title }) {
                   const label = ctx.label || "";
                   const value = ctx.parsed || 0;
                   const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
-                  const pct = ((value / total) * 100).toFixed(1);
+                  const pct = total ? ((value / total) * 100).toFixed(1) : "0.0";
                   return `${label}: ${pct}% (${value} rides)`;
                 },
               },
@@ -227,12 +227,13 @@ export default function AdminDashboard() {
   });
   const [loadingRideTypes, setLoadingRideTypes] = useState(false);
 
-  // Filter users based on search query
-  const filteredUsers = users.filter(
-    (user) =>
-      user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Filter users based on search query (safe guards for missing fields)
+  const filteredUsers = users.filter((user) => {
+    const name = (user.name || "").toLowerCase();
+    const email = (user.email || "").toLowerCase();
+    const q = searchQuery.toLowerCase();
+    return name.includes(q) || email.includes(q);
+  });
 
   // ✅ Fetch users from deployed backend
   const fetchUsers = async () => {
@@ -242,8 +243,18 @@ export default function AdminDashboard() {
       const data = await response.json();
 
       if (data.success) {
-        setUsers(data.users);
-        console.log(`Loaded ${data.count} users from database`);
+        const normalized = (data.users || []).map((u) => ({
+          id: u._id || u.id,
+          name: u.name || u.fullName || u.email || "User",
+          email: u.email || "unknown@mastoride.edu",
+          joined: u.createdAt
+            ? new Date(u.createdAt).toLocaleDateString()
+            : "—",
+          status: u.isActive === false ? "Inactive" : "Active",
+        }));
+
+        setUsers(normalized);
+        console.log(`Loaded ${normalized.length} users from database`);
       } else {
         pushToast("Failed to load users", "error");
       }
@@ -264,8 +275,8 @@ export default function AdminDashboard() {
 
       if (data.success) {
         setMonthlyRideData({
-          labels: data.labels,
-          data: data.counts,
+          labels: data.labels || monthlyRideData.labels,
+          data: data.counts || monthlyRideData.data,
         });
         console.log("Loaded monthly ride statistics from database");
       } else {
@@ -288,9 +299,9 @@ export default function AdminDashboard() {
 
       if (data.success) {
         setRideTypeData({
-          labels: data.labels,
-          data: data.data,
-          colors: data.colors,
+          labels: data.labels || rideTypeData.labels,
+          data: data.data || rideTypeData.data,
+          colors: data.colors || rideTypeData.colors,
         });
         console.log("Loaded ride type distribution from database");
       } else {
@@ -315,8 +326,8 @@ export default function AdminDashboard() {
         const data = await response.json();
 
         if (data.success) {
-          setUsers(users.filter((u) => u.id !== userId));
-          setSelectedUsers(selectedUsers.filter((id) => id !== userId));
+          setUsers((prev) => prev.filter((u) => u.id !== userId));
+          setSelectedUsers((prev) => prev.filter((id) => id !== userId));
           pushToast(`${userName} has been deleted`, "success");
         } else {
           pushToast(data.error || "Failed to delete user", "error");
@@ -353,7 +364,7 @@ export default function AdminDashboard() {
         const failCount = results.length - successCount;
 
         if (successCount > 0) {
-          setUsers(users.filter((u) => !selectedUsers.includes(u.id)));
+          setUsers((prev) => prev.filter((u) => !selectedUsers.includes(u.id)));
           setSelectedUsers([]);
 
           if (failCount === 0) {
@@ -416,14 +427,16 @@ export default function AdminDashboard() {
     if (currentUser && activeTab === "users") {
       fetchUsers();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser, activeTab]);
 
-  // Fetch monthly ride data when component mounts or when activeTab changes to "analytics"
+  // Fetch monthly ride data when activeTab changes to "analytics"
   useEffect(() => {
     if (currentUser && activeTab === "analytics") {
       fetchMonthlyRides();
       fetchRideTypes();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser, activeTab]);
 
   // Load profile/settings
@@ -462,6 +475,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     localStorage.setItem(LS_KEYS.tab, activeTab);
   }, [activeTab]);
+
   useEffect(() => {
     localStorage.setItem(LS_KEYS.sidebar, String(sidebarOpen));
   }, [sidebarOpen]);
@@ -716,8 +730,7 @@ export default function AdminDashboard() {
                       borderRadius: "16px",
                       marginBottom: "32px",
                       textAlign: "center",
-                      boxShadow:
-                        "0 4px 12px rgba(248, 169, 111, 0.25)",
+                      boxShadow: "0 4px 12px rgba(248, 169, 111, 0.25)",
                       animation: "fadeInDown 0.5s ease-out",
                     }}
                   >
@@ -753,8 +766,7 @@ export default function AdminDashboard() {
                       gap: "16px",
                       marginBottom: "32px",
                       alignItems: "center",
-                      animation:
-                        "fadeInUp 0.6s ease-out 0.1s backwards",
+                      animation: "fadeInUp 0.6s ease-out 0.1s backwards",
                     }}
                   >
                     <div style={{ flex: "1", position: "relative" }}>
@@ -821,11 +833,7 @@ export default function AdminDashboard() {
                         pushToast("Exporting users...", "success")
                       }
                     >
-                      <span
-                        style={{ fontSize: "1.2rem" }}
-                      >
-                        📤
-                      </span>
+                      <span style={{ fontSize: "1.2rem" }}>📤</span>
                       Export
                     </button>
 
@@ -840,22 +848,19 @@ export default function AdminDashboard() {
                         fontSize: "1rem",
                         fontWeight: "700",
                         cursor: "pointer",
-                        boxShadow:
-                          "0 4px 12px rgba(248, 169, 111, 0.4)",
+                        boxShadow: "0 4px 12px rgba(248, 169, 111, 0.4)",
                         transition: "all 0.2s ease",
                         display: "flex",
                         alignItems: "center",
                         gap: "8px",
                       }}
                       onMouseEnter={(e) => {
-                        e.currentTarget.style.transform =
-                          "translateY(-2px)";
+                        e.currentTarget.style.transform = "translateY(-2px)";
                         e.currentTarget.style.boxShadow =
                           "0 8px 20px rgba(248, 169, 111, 0.5)";
                       }}
                       onMouseLeave={(e) => {
-                        e.currentTarget.style.transform =
-                          "translateY(0)";
+                        e.currentTarget.style.transform = "translateY(0)";
                         e.currentTarget.style.boxShadow =
                           "0 4px 12px rgba(248, 169, 111, 0.4)";
                       }}
@@ -866,11 +871,7 @@ export default function AdminDashboard() {
                         )
                       }
                     >
-                      <span
-                        style={{ fontSize: "1.2rem" }}
-                      >
-                        ➕
-                      </span>
+                      <span style={{ fontSize: "1.2rem" }}>➕</span>
                       Add User
                     </button>
                   </div>
@@ -881,8 +882,7 @@ export default function AdminDashboard() {
                       borderRadius: "16px",
                       overflow: "hidden",
                       boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
-                      animation:
-                        "fadeInUp 0.6s ease-out 0.2s backwards",
+                      animation: "fadeInUp 0.6s ease-out 0.2s backwards",
                     }}
                   >
                     <div style={{ overflowX: "auto" }}>
@@ -981,7 +981,21 @@ export default function AdminDashboard() {
                           </tr>
                         </thead>
                         <tbody>
-                          {filteredUsers.length === 0 ? (
+                          {loadingUsers ? (
+                            <tr>
+                              <td
+                                colSpan="6"
+                                style={{
+                                  padding: "40px",
+                                  textAlign: "center",
+                                  color: "#6b7280",
+                                  fontSize: "1rem",
+                                }}
+                              >
+                                Loading users from server...
+                              </td>
+                            </tr>
+                          ) : filteredUsers.length === 0 ? (
                             <tr>
                               <td
                                 colSpan="6"
@@ -1018,8 +1032,7 @@ export default function AdminDashboard() {
                               <tr
                                 key={user.id}
                                 style={{
-                                  borderBottom:
-                                    "1px solid #f3f4f6",
+                                  borderBottom: "1px solid #f3f4f6",
                                   transition: "all 0.2s ease",
                                   animation: `fadeInUp 0.4s ease-out ${
                                     0.3 + index * 0.1
@@ -1051,13 +1064,13 @@ export default function AdminDashboard() {
                                     )}
                                     onChange={(e) => {
                                       if (e.target.checked) {
-                                        setSelectedUsers([
-                                          ...selectedUsers,
+                                        setSelectedUsers((prev) => [
+                                          ...prev,
                                           user.id,
                                         ]);
                                       } else {
-                                        setSelectedUsers(
-                                          selectedUsers.filter(
+                                        setSelectedUsers((prev) =>
+                                          prev.filter(
                                             (id) => id !== user.id
                                           )
                                         );
@@ -1092,7 +1105,9 @@ export default function AdminDashboard() {
                                         color: "#fff",
                                       }}
                                     >
-                                      {user.name.charAt(0)}
+                                      {(user.name || user.email || "?")
+                                        .charAt(0)
+                                        .toUpperCase()}
                                     </div>
                                     <span
                                       style={{
