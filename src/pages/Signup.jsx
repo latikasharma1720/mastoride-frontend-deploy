@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar";
+import API_BASE_URL from "../config/api"; // 👈 NEW
 
 export default function Signup() {
   const navigate = useNavigate();
@@ -38,8 +39,8 @@ export default function Signup() {
     setLoading(true);
 
     try {
-      // Call relative /api path – Vercel will proxy this to Railway
-      const response = await fetch("/api/auth/signup", {
+      // 🔗 Call deployed backend using API_BASE_URL
+      const response = await fetch(`${API_BASE_URL}/api/auth/signup`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -50,7 +51,7 @@ export default function Signup() {
         }),
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
 
       if (response.ok) {
         alert("✅ Account created successfully! User ID: " + data.userId);
