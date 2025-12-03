@@ -16,16 +16,24 @@ export default function BookRide() {
   const [fare, setFare] = useState(null);
   const [confirmMsg, setConfirmMsg] = useState("");
 
-  // Calculate simple fare dynamically
+  // Calculate simple fare dynamically (pure front-end)
   const handleEstimateFare = (e) => {
     e.preventDefault();
+
+    if (!ride.pickup || !ride.dropoff || !ride.date || !ride.time) {
+      setConfirmMsg("❌ Please fill in pickup, drop-off, date and time first.");
+      return;
+    }
+
     const baseFare = 3.5;
     const distance = Math.floor(Math.random() * 10) + 1; // mock distance 1–10 mi
-    const total = (baseFare + distance * 1.75) * ride.passengers;
+    const total = (baseFare + distance * 1.75) * (ride.passengers || 1);
     setFare(total.toFixed(2));
+    setConfirmMsg(`💵 Estimated fare: $${total.toFixed(2)}`);
   };
 
-  const handleBookRide = async (e) => {
+  // Pure front-end booking confirmation — NO fetch, NO /api/booking
+  const handleBookRide = (e) => {
     e.preventDefault();
 
     if (!ride.pickup || !ride.dropoff || !ride.date || !ride.time) {
@@ -33,40 +41,14 @@ export default function BookRide() {
       return;
     }
 
-    try {
-      const response = await fetch("/api/booking", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          studentId: user?.email?.split("@")[0] || "student",
-          studentEmail: user?.email || "",
-          studentName: user?.name || "",
-          pickup: ride.pickup,
-          dropoff: ride.dropoff,
-          rideDate: ride.date,
-          rideTime: ride.time,
-          passengers: ride.passengers,
-          vehicleType: "economy",
-          estimatedFare: fare ? parseFloat(fare) : 0,
-          paymentMethod: "Visa Card",
-        }),
-      });
-
-      const data = await response.json();
-
-      if (response.ok && data.booking) {
-        setConfirmMsg(
-          `✅ Ride confirmed for ${ride.date} at ${ride.time} from ${ride.pickup} to ${ride.dropoff}. Booking ID: ${data.booking._id}`
-        );
-      } else {
-        setConfirmMsg(`❌ ${data.error || "Booking failed"}`);
-      }
-    } catch (error) {
-      console.error("Booking error:", error);
-      setConfirmMsg("❌ Cannot connect to server. Please try again.");
+    if (!fare) {
+      setConfirmMsg("❌ Please estimate the fare before confirming.");
+      return;
     }
+
+    setConfirmMsg(
+      `✅ Ride confirmed for ${ride.date} at ${ride.time} from ${ride.pickup} to ${ride.dropoff}.`
+    );
   };
 
   return (
@@ -209,8 +191,12 @@ export default function BookRide() {
             >
               {confirmMsg}
               <br />
-              A confirmation email will be sent to{" "}
-              <strong>{user?.email}</strong>.
+              {user?.email && (
+                <>
+                  A confirmation email will be sent to{" "}
+                  <strong>{user.email}</strong>.
+                </>
+              )}
             </div>
           )}
         </div>
