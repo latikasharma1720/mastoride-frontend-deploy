@@ -86,7 +86,7 @@ export default function UserDashboard() {
   const [fare, setFare] = useState(null);
   const [fareEstimated, setFareEstimated] = useState(false);
 
-  // ---------- PAYMENT ----------
+  // ---------- PAYMENT (PURE FRONT-END) ----------
   const [card, setCard] = useState({
     cardHolder: "",
     cardNumber: "",
@@ -117,7 +117,7 @@ export default function UserDashboard() {
     setAuthChecked(true);
   }, []);
 
-  // ---------- LOAD PROFILE / SETTINGS ----------
+  // ---------- LOAD PROFILE / SETTINGS (LOCAL STORAGE) ----------
   useEffect(() => {
     if (!currentUser) return;
     const userId = currentUser.id || currentUser._id || "user-demo";
@@ -152,7 +152,6 @@ export default function UserDashboard() {
     localStorage.setItem(LS_KEYS.sidebar, String(sidebarOpen));
   }, [sidebarOpen]);
 
-  // persist ride draft & history
   useEffect(() => {
     localStorage.setItem(LS_KEYS.ride, JSON.stringify(ride));
   }, [ride]);
@@ -166,7 +165,7 @@ export default function UserDashboard() {
     return <Navigate to="/login" replace />;
   }
 
-  // ---------- HELPERS ----------
+  // ---------- HANDLERS ----------
   function handleRideChange(e) {
     const { name, value } = e.target;
     setRide((prev) => ({
@@ -189,7 +188,7 @@ export default function UserDashboard() {
     }
 
     const baseFare = 3.5;
-    const distance = Math.floor(Math.random() * 10) + 1; // 1–10 miles (mock)
+    const distance = Math.floor(Math.random() * 10) + 1; // 1–10 miles
     const total = (baseFare + distance * 1.75) * (ride.passengers || 1);
     setFare(total.toFixed(2));
     setFareEstimated(true);
@@ -197,7 +196,7 @@ export default function UserDashboard() {
     setActiveTab("payment");
   }
 
-  async function handleConfirmPayment(e) {
+  function handleConfirmPayment(e) {
     e.preventDefault();
 
     if (!fareEstimated || !fare) {
@@ -205,7 +204,6 @@ export default function UserDashboard() {
       return;
     }
 
-    // simple front-end validation for card info
     if (
       !card.cardHolder.trim() ||
       !card.cardNumber.trim() ||
@@ -218,42 +216,31 @@ export default function UserDashboard() {
 
     setIsSubmittingPayment(true);
 
-    try {
-      // ✅ Pure front-end demo booking: no backend call at all
-      const booking = {
-        id: Date.now(),
-        pickup: ride.pickup,
-        dropoff: ride.dropoff,
-        date: ride.date,
-        time: ride.time,
-        passengers: ride.passengers,
-        fare,
-        createdAt: new Date().toISOString(),
-      };
+    // 🔒 PURE FRONT-END: no fetch, no API calls.
+    const booking = {
+      id: Date.now(),
+      pickup: ride.pickup,
+      dropoff: ride.dropoff,
+      date: ride.date,
+      time: ride.time,
+      passengers: ride.passengers,
+      fare,
+      createdAt: new Date().toISOString(),
+    };
 
-      // prepend to history
-      setRideHistory((prev) => [booking, ...prev]);
+    setRideHistory((prev) => [booking, ...prev]);
 
-      // unlock "first ride" badge
-      setAvailableBadges((prev) =>
-        prev.map((b) =>
-          b.id === "first-ride" ? { ...b, earned: true } : b
-        )
-      );
+    setAvailableBadges((prev) =>
+      prev.map((b) => (b.id === "first-ride" ? { ...b, earned: true } : b))
+    );
 
-      setShowPaymentSuccess(true);
-      pushToast("Ride booked successfully!", "success");
-    } catch (err) {
-      // just log – no UI spam
-      console.error("[payment>booking] unexpected error:", err);
-    } finally {
-      setIsSubmittingPayment(false);
-    }
+    setShowPaymentSuccess(true);
+    pushToast("Ride booked successfully!", "success");
+    setIsSubmittingPayment(false);
   }
 
   function closeSuccessModal() {
     setShowPaymentSuccess(false);
-    // reset forms
     setRide({
       pickup: "",
       dropoff: "",
@@ -272,7 +259,6 @@ export default function UserDashboard() {
     setActiveTab("history");
   }
 
-  // profile handlers
   function onProfileChange(e) {
     const { name, value } = e.target;
     setProfile((p) => ({ ...p, [name]: value }));
@@ -856,8 +842,7 @@ export default function UserDashboard() {
                                 {r.pickup} → {r.dropoff}
                               </strong>
                               <div className="history-meta">
-                                {r.date} at {r.time} • {r.passengers}{" "}
-                                passenger(s)
+                                {r.date} at {r.time} • {r.passengers} passenger(s)
                               </div>
                             </div>
                             <div className="history-fare">${r.fare}</div>
