@@ -1,4 +1,5 @@
 // src/pages/user/UserDashboard.jsx
+const API_BASE = "https://mastoride-web-dev-production-d469.up.railway.app";
 import React, { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import Navbar from "../../components/Navbar";
