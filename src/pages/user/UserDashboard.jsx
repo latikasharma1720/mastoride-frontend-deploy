@@ -2,10 +2,10 @@
 import React, { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import Navbar from "../../components/Navbar";
+import MapBlock from "../../components/MapBlock";
 import { getUser } from "../../utils/session";
 import { useToast } from "../../components/ui-kit";
 import { getProfile, saveProfile, getSettings, saveSettings } from "../../utils/data";
-import MapBlock from "../../components/MapBlock";
 
 const NAV_ITEMS = [
   { id: "profile", label: "Profile", icon: "👤" },
@@ -19,328 +19,278 @@ const LS_KEYS = {
   ride: "ud_ride_draft",
   tab: "ud_active_tab",
   sidebar: "ud_sidebar_open",
+  history: "ud_ride_history",
 };
 
 const getDefaultAvailableBadges = () => [
-  { id: Date.now() + 1, icon: "🚗", title: "10 Rides Completed", date: "Earned on Oct 20, 2025", type: "achievement" },
-  { id: Date.now() + 2, icon: "🏅", title: "Gold Rider", description: "Exclusive 10% off next ride", type: "reward" },
-  { id: Date.now() + 3, icon: "🎯", title: "Early Bird", description: "Book 5 rides before 8 AM", type: "achievement" },
-  { id: Date.now() + 4, icon: "🌟", title: "Weekend Warrior", description: "Complete 10 weekend rides", type: "achievement" },
-];
-
-const VEHICLES = {
-  economy: { label: "🚕 Economy", multiplier: 1 },
-  premium: { label: "🚘 Premium", multiplier: 2 },
-  xl: { label: "🚐 XL", multiplier: 1.5 },
-};
-
-const getRideHistory = () => [
-  {
-    id: 1,
-    date: "09/22",
-    fullDate: "September 22, 2025",
-    pickup: "Campus Center",
-    dropoff: "Jefferson Pointe Mall",
-    destination: "Off-Campus Destination — Fort Wayne",
-    price: "$12.50",
-    paymentMethod: "Visa Card",
-    status: "Completed",
-  },
-  {
-    id: 2,
-    date: "09/19",
-    fullDate: "September 19, 2025",
-    pickup: "Dorms",
-    dropoff: "Fort Wayne International Airport",
-    destination: "Off-Campus Destination — Fort Wayne",
-    price: "$22.75",
-    paymentMethod: "Visa Card",
-    status: "Completed",
-  },
-  {
-    id: 3,
-    date: "09/15",
-    fullDate: "September 15, 2025",
-    pickup: "Library",
-    dropoff: "Student Union",
-    destination: "On-Campus",
-    price: "$5.00",
-    paymentMethod: "Apple Pay",
-    status: "Completed",
-  },
-  {
-    id: 4,
-    date: "09/10",
-    fullDate: "September 10, 2025",
-    pickup: "Engineering Building",
-    dropoff: "Glenbrook Square Mall",
-    destination: "Off-Campus Destination — Fort Wayne",
-    price: "$18.50",
-    paymentMethod: "Visa Card",
-    status: "Completed",
-  },
+  { id: "welcome", label: "Welcome Rider", earned: true },
+  { id: "first-ride", label: "First Ride", earned: false },
+  { id: "early-bird", label: "Early Bird", earned: false },
+  { id: "night-owl", label: "Night Owl", earned: false },
 ];
 
 export default function UserDashboard() {
   const { pushToast } = useToast();
 
+  // ---------- AUTH ----------
   const [authChecked, setAuthChecked] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
-  const [activeTab, setActiveTab] = useState(() => localStorage.getItem(LS_KEYS.tab) || "profile");
+
+  // ---------- UI LAYOUT ----------
+  const [activeTab, setActiveTab] = useState(
+    () => localStorage.getItem(LS_KEYS.tab) || "profile"
+  );
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     const raw = localStorage.getItem(LS_KEYS.sidebar);
     return raw == null ? true : raw === "true";
   });
 
-  const [displayName, setDisplayName] = useState("");
-  const [isEditing, setIsEditing] = useState(false);
-  const [savingProfile, setSavingProfile] = useState(false);
-
-  // Expanded profile object (longer desktop form)
+  // ---------- PROFILE + SETTINGS ----------
   const [profile, setProfile] = useState({
     name: "",
-    studentId: "",
     email: "",
     phone: "",
-    department: "",
-    year: "",
+    major: "",
+    gradYear: "",
+    campusId: "",
     address: "",
-    emergencyContact: "",
-    dob: "",
-    preferredVehicle: "",
     bio: "",
   });
 
   const [settings, setSettings] = useState({
-    rideAlerts: true,
-    marketing: false,
-    wheelchairAccess: false,
+    emailNotifications: true,
+    smsAlerts: false,
+    rideReminders: true,
     darkMode: false,
   });
-  const [savingSettings, setSavingSettings] = useState(false);
 
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [profileSubTab, setProfileSubTab] = useState("account");
+
+  // ---------- RIDE BOOKING ----------
   const [ride, setRide] = useState(() => {
-    try {
-      const raw = localStorage.getItem(LS_KEYS.ride);
-      return JSON.parse(raw) || {
+    const stored = localStorage.getItem(LS_KEYS.ride);
+    return (
+      (stored && JSON.parse(stored)) || {
         pickup: "",
         dropoff: "",
         date: "",
         time: "",
         passengers: 1,
-        vehicleType: "economy",
-      };
-    } catch {
-      return { pickup: "", dropoff: "", date: "", time: "", passengers: 1, vehicleType: "economy" };
-    }
+      }
+    );
   });
 
   const [fare, setFare] = useState(null);
-  const [estimating, setEstimating] = useState(false);
-  const [paymentConfirmed, setPaymentConfirmed] = useState(false);
+  const [fareEstimated, setFareEstimated] = useState(false);
 
-  // Card payment state
-  const [cardDetails, setCardDetails] = useState({
+  // ---------- PAYMENT ----------
+  const [card, setCard] = useState({
+    cardHolder: "",
     cardNumber: "",
-    cardholderName: "",
-    expiryDate: "",
+    expiry: "",
     cvv: "",
   });
-  const [processingPayment, setProcessingPayment] = useState(false);
 
-  const [availableBadges, setAvailableBadges] = useState([]);
-  const [usedBadges, setUsedBadges] = useState([]);
-  const [badgesInitialized, setBadgesInitialized] = useState(false);
+  const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
+  const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
 
-  const [rideHistory, setRideHistory] = useState([]);
+  // ---------- REWARDS + HISTORY (LOCAL ONLY) ----------
+  const [availableBadges, setAvailableBadges] = useState(
+    getDefaultAvailableBadges()
+  );
+  const [rideHistory, setRideHistory] = useState(() => {
+    const stored = localStorage.getItem(LS_KEYS.history);
+    return stored ? JSON.parse(stored) : [];
+  });
 
-  // --- History filter states ---
-  const [filterPeriod, setFilterPeriod] = useState("all");
-  const [filterStatus, setFilterStatus] = useState("all");
-  const [sortBy, setSortBy] = useState("recent");
-
-  // profile inner tabs
-  const [profileSubTab, setProfileSubTab] = useState("account");
-
-  // --- Support form state ---
-  const [supportForm, setSupportForm] = useState({ subject: "", message: "" });
-  const [sendingSupport, setSendingSupport] = useState(false);
-
-  useEffect(() => { localStorage.setItem(LS_KEYS.tab, activeTab); }, [activeTab]);
-  useEffect(() => { localStorage.setItem(LS_KEYS.sidebar, String(sidebarOpen)); }, [sidebarOpen]);
-  useEffect(() => { localStorage.setItem(LS_KEYS.ride, JSON.stringify(ride)); }, [ride]);
-
+  // ---------- AUTH CHECK ----------
   useEffect(() => {
     const u = getUser();
-    setCurrentUser(u || null);
+    if (!u || u.role !== "user") {
+      setAuthChecked(true);
+      return;
+    }
+    setCurrentUser(u);
     setAuthChecked(true);
   }, []);
 
+  // ---------- LOAD PROFILE / SETTINGS ----------
   useEffect(() => {
     if (!currentUser) return;
+    const userId = currentUser.id || currentUser._id || "user-demo";
 
-    const uid = currentUser.email || currentUser.id || "demo-user";
-
-    const stored = getProfile(uid);
+    const storedProfile = getProfile(userId) || {};
     setProfile({
-      name: stored.name || currentUser.name || "user1",
-      studentId: stored.studentId || currentUser.studentId || "PFW123456",
-      email: stored.email || currentUser.email || "user1@pfw.edu",
-      phone: stored.phone || currentUser.phone || "",
-      department: stored.department || "",
-      year: stored.year || "",
-      address: stored.address || "",
-      emergencyContact: stored.emergencyContact || "",
-      dob: stored.dob || "",
-      preferredVehicle: stored.preferredVehicle || "",
-      bio: stored.bio || "",
+      name: storedProfile.name || currentUser.name || "",
+      email: storedProfile.email || currentUser.email || "",
+      phone: storedProfile.phone || "",
+      major: storedProfile.major || "",
+      gradYear: storedProfile.gradYear || "",
+      campusId: storedProfile.campusId || "",
+      address: storedProfile.address || "",
+      bio: storedProfile.bio || "",
     });
 
-    const loadedSettings = getSettings(uid);
+    const storedSettings = getSettings(userId) || {};
     setSettings({
-      rideAlerts: loadedSettings.rideAlerts ?? true,
-      marketing: loadedSettings.marketing ?? false,
-      wheelchairAccess: loadedSettings.wheelchairAccess ?? false,
-      darkMode: loadedSettings.darkMode ?? false,
+      emailNotifications: storedSettings.emailNotifications ?? true,
+      smsAlerts: storedSettings.smsAlerts ?? false,
+      rideReminders: storedSettings.rideReminders ?? true,
+      darkMode: storedSettings.darkMode ?? false,
     });
-
-    setDisplayName(stored.name || currentUser.name || "user1");
-
-    try {
-      const a = localStorage.getItem(`badges_available_${uid}`);
-      const u = localStorage.getItem(`badges_used_${uid}`);
-      setAvailableBadges(a ? JSON.parse(a) : getDefaultAvailableBadges());
-      setUsedBadges(u ? JSON.parse(u) : []);
-    } catch {
-      setAvailableBadges(getDefaultAvailableBadges());
-      setUsedBadges([]);
-    }
-    setBadgesInitialized(true);
-
-    setRideHistory(getRideHistory());
   }, [currentUser]);
 
-  // 🔁 This effect creates & updates a booking in the backend (Kept same, only URL changed)
+  // ---------- PERSIST UI STATE ----------
   useEffect(() => {
-    if (!currentUser || !badgesInitialized) return;
-    // Avoid calling backend when no fare is calculated yet
-    if (!fare) return;
+    localStorage.setItem(LS_KEYS.tab, activeTab);
+  }, [activeTab]);
 
-    const timer = setTimeout(() => {
-      (async () => {
-        try {
-          // Simulate payment success, then persist booking to backend
-          const studentEmail = currentUser?.email || profile.email || "";
-          const studentName = currentUser?.name || profile.name || "";
-          const studentId =
-            (studentEmail.split("@")[0]) || profile.studentId || "student";
+  useEffect(() => {
+    localStorage.setItem(LS_KEYS.sidebar, String(sidebarOpen));
+  }, [sidebarOpen]);
 
-          const payload = {
-            studentId,
-            studentEmail,
-            studentName,
-            pickup: ride.pickup || "",
-            dropoff: ride.dropoff || "",
-            rideDate: ride.date || "",
-            rideTime: ride.time || "",
-            passengers: ride.passengers || 1,
-            vehicleType: ride.vehicleType || "economy",
-            estimatedFare: fare ? parseFloat(fare) : 0,
-            paymentMethod: "Card",
-            pickupNotes: profile.pickupNotes || "",
-            accessibilityNeeds: settings.wheelchairAccess ? "Wheelchair access" : "",
-          };
+  // persist ride draft & history
+  useEffect(() => {
+    localStorage.setItem(LS_KEYS.ride, JSON.stringify(ride));
+  }, [ride]);
 
-          // Basic client-side validation before hitting backend
-          if (
-            !payload.pickup ||
-            !payload.dropoff ||
-            !payload.rideDate ||
-            !payload.rideTime ||
-            !payload.studentEmail
-          ) {
-            pushToast("Please complete ride details before payment.", "error");
-          } else {
-            // ✅ Create booking on deployed backend via Vercel proxy
-            const createRes = await fetch("/api/admin/users", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(payload),
-            });
-            const createData = await createRes.json();
-
-            if (!createRes.ok) {
-              pushToast(createData.error || "Failed to create booking", "error");
-            } else {
-              const bookingId = createData.booking?._id;
-              // Mark booking completed to generate ride history
-              if (bookingId) {
-                await fetch(`/api/admin/users/${bookingId}`, {
-                  method: "PUT",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    status: "completed",
-                    actualFare: fare ? parseFloat(fare) : payload.estimatedFare || 0,
-                    paymentStatus: "completed",
-                  }),
-                });
-              }
-
-              pushToast("Payment successful! Ride confirmed!", "success");
-            }
-          }
-        } catch (err) {
-          console.error("[payment->booking] error", err);
-          pushToast("Could not save booking. Please try again.", "error");
-        } finally {
-          setProcessingPayment(false);
-          setPaymentConfirmed(true);
-          // Clear card details after successful payment
-          setCardDetails({
-            cardNumber: "",
-            cardholderName: "",
-            expiryDate: "",
-            cvv: "",
-          });
-        }
-      })();
-    }, 800);
-
-    return () => clearTimeout(timer);
-  }, [currentUser, badgesInitialized, fare, ride, settings, profile, pushToast]);
+  useEffect(() => {
+    localStorage.setItem(LS_KEYS.history, JSON.stringify(rideHistory));
+  }, [rideHistory]);
 
   if (!authChecked) return null;
-  if (!currentUser || (currentUser.role !== "user" && currentUser.role !== "student")) {
+  if (!currentUser || currentUser.role !== "user") {
     return <Navigate to="/login" replace />;
   }
 
-  const uid = currentUser.email || currentUser.id || "demo-user";
-
-  /* Handlers */
-  function toggleEditMode() {
-    setIsEditing((v) => {
-      console.log("Toggling edit mode from", v, "to", !v);
-      return !v;
-    });
+  // ---------- HELPERS ----------
+  function handleRideChange(e) {
+    const { name, value } = e.target;
+    setRide((prev) => ({
+      ...prev,
+      [name]: name === "passengers" ? Number(value) || 1 : value,
+    }));
   }
 
+  function handleCardChange(e) {
+    const { name, value } = e.target;
+    setCard((prev) => ({ ...prev, [name]: value }));
+  }
+
+  function handleEstimateFare(e) {
+    e.preventDefault();
+
+    if (!ride.pickup || !ride.dropoff || !ride.date || !ride.time) {
+      pushToast("Please fill pickup, drop-off, date and time first.", "error");
+      return;
+    }
+
+    const baseFare = 3.5;
+    const distance = Math.floor(Math.random() * 10) + 1; // 1–10 miles (mock)
+    const total = (baseFare + distance * 1.75) * (ride.passengers || 1);
+    setFare(total.toFixed(2));
+    setFareEstimated(true);
+    pushToast("Fare estimated for your ride.", "success");
+    setActiveTab("payment");
+  }
+
+  async function handleConfirmPayment(e) {
+    e.preventDefault();
+
+    if (!fareEstimated || !fare) {
+      pushToast("Please estimate the fare before paying.", "error");
+      return;
+    }
+
+    // simple front-end validation for card info
+    if (
+      !card.cardHolder.trim() ||
+      !card.cardNumber.trim() ||
+      !card.expiry.trim() ||
+      !card.cvv.trim()
+    ) {
+      pushToast("Please fill in all card details.", "error");
+      return;
+    }
+
+    setIsSubmittingPayment(true);
+
+    try {
+      // ✅ Pure front-end demo booking: no backend call at all
+      const booking = {
+        id: Date.now(),
+        pickup: ride.pickup,
+        dropoff: ride.dropoff,
+        date: ride.date,
+        time: ride.time,
+        passengers: ride.passengers,
+        fare,
+        createdAt: new Date().toISOString(),
+      };
+
+      // prepend to history
+      setRideHistory((prev) => [booking, ...prev]);
+
+      // unlock "first ride" badge
+      setAvailableBadges((prev) =>
+        prev.map((b) =>
+          b.id === "first-ride" ? { ...b, earned: true } : b
+        )
+      );
+
+      setShowPaymentSuccess(true);
+      pushToast("Ride booked successfully!", "success");
+    } catch (err) {
+      // just log – no UI spam
+      console.error("[payment>booking] unexpected error:", err);
+    } finally {
+      setIsSubmittingPayment(false);
+    }
+  }
+
+  function closeSuccessModal() {
+    setShowPaymentSuccess(false);
+    // reset forms
+    setRide({
+      pickup: "",
+      dropoff: "",
+      date: "",
+      time: "",
+      passengers: 1,
+    });
+    setFare(null);
+    setFareEstimated(false);
+    setCard({
+      cardHolder: "",
+      cardNumber: "",
+      expiry: "",
+      cvv: "",
+    });
+    setActiveTab("history");
+  }
+
+  // profile handlers
   function onProfileChange(e) {
     const { name, value } = e.target;
     setProfile((p) => ({ ...p, [name]: value }));
   }
 
-  async function onSaveProfile(e) {
+  function onSaveProfile(e) {
     e.preventDefault();
     setSavingProfile(true);
     try {
-      if (!/\S+@\S+\.\S+/.test(profile.email)) {
+      if (profile.email && !/\S+@\S+\.\S+/.test(profile.email)) {
         pushToast("Please enter a valid email.", "error");
+        setSavingProfile(false);
         return;
       }
-      saveProfile(uid, profile);
-      setDisplayName(profile.name);
+      const userId = currentUser.id || currentUser._id || "user-demo";
+      saveProfile(userId, profile);
       pushToast("Profile saved!", "success");
-      setIsEditing(false);
+      setIsEditingProfile(false);
     } catch {
       pushToast("Could not save profile.", "error");
     } finally {
@@ -352,11 +302,12 @@ export default function UserDashboard() {
     setSettings((s) => ({ ...s, [key]: !s[key] }));
   }
 
-  async function onSaveSettings(e) {
+  function onSaveSettings(e) {
     e.preventDefault();
     setSavingSettings(true);
     try {
-      saveSettings(uid, settings);
+      const userId = currentUser.id || currentUser._id || "user-demo";
+      saveSettings(userId, settings);
       pushToast("Settings saved!", "success");
     } catch {
       pushToast("Could not save settings.", "error");
@@ -365,192 +316,7 @@ export default function UserDashboard() {
     }
   }
 
-  const handleEstimateFare = (e) => {
-    e.preventDefault();
-    setEstimating(true);
-    const base = 3.5;
-    const perMile = 1.75;
-    const distance = Math.floor(Math.random() * 10) + 1;
-    const mult = VEHICLES[ride.vehicleType].multiplier;
-    const total = (base + distance * perMile) * ride.passengers * mult;
-    setTimeout(() => { setFare(total.toFixed(2)); setEstimating(false); }, 300);
-  };
-
-  // Card formatting helper functions
-  const formatCardNumber = (value) => {
-    const cleaned = value.replace(/\s/g, "");
-    const match = cleaned.match(/.{1,4}/g);
-    return match ? match.join(" ") : cleaned;
-  };
-
-  const formatExpiryDate = (value) => {
-    const cleaned = value.replace(/\D/g, "");
-    if (cleaned.length >= 2) {
-      return cleaned.slice(0, 2) + "/" + cleaned.slice(2, 4);
-    }
-    return cleaned;
-  };
-
-  const handlePayNow = (e) => {
-    e.preventDefault();
-
-    // Validate card details
-    if (
-      !cardDetails.cardNumber.trim() ||
-      !cardDetails.cardholderName.trim() ||
-      !cardDetails.expiryDate.trim() ||
-      !cardDetails.cvv.trim()
-    ) {
-      pushToast("Please fill in all card details");
-      return;
-    }
-
-    // Basic card number validation (16 digits)
-    const cleanCardNumber = cardDetails.cardNumber.replace(/\s/g, "");
-    if (cleanCardNumber.length !== 16 || !/^\d+$/.test(cleanCardNumber)) {
-      pushToast("Please enter a valid 16-digit card number");
-      return;
-    }
-
-    // CVV validation (3-4 digits)
-    if (!/^\d{3,4}$/.test(cardDetails.cvv)) {
-      pushToast("Please enter a valid CVV (3-4 digits)");
-      return;
-    }
-
-    // Expiry date validation (MM/YY format)
-    if (!/^\d{2}\/\d{2}$/.test(cardDetails.expiryDate)) {
-      pushToast("Please enter expiry date in MM/YY format");
-      return;
-    }
-
-    setProcessingPayment(true);
-    setTimeout(() => {
-      setProcessingPayment(false);
-      setPaymentConfirmed(true);
-
-      // Clear card details after successful payment
-      setCardDetails({
-        cardNumber: "",
-        cardholderName: "",
-        expiryDate: "",
-        cvv: "",
-      });
-
-      pushToast("Payment successful! Ride confirmed!");
-    }, 1500);
-  };
-
-  const handleUseBadge = (badgeId) => {
-    const badgeToUse = availableBadges.find((b) => b.id === badgeId);
-    if (!badgeToUse) return;
-
-    const currentDate = new Date().toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-
-    const usedBadge = {
-      ...badgeToUse,
-      date: `Used on ${currentDate}`,
-      usedDate: new Date().toISOString(),
-    };
-    setAvailableBadges((prev) => prev.filter((b) => b.id !== badgeId));
-    setUsedBadges((prev) => [usedBadge, ...prev]);
-    pushToast(`Badge "${badgeToUse.title}" has been used!`, "success");
-  };
-
-  // --- Support submit handler (mailto: support@mastoride.com) ---
-  const onSupportSubmit = (e) => {
-    e.preventDefault();
-    const subject = supportForm.subject.trim();
-    const message = supportForm.message.trim();
-    if (!subject || !message) return;
-
-    setSendingSupport(true);
-
-    const to = "support@mastoride.com";
-    const body = `From: ${profile.email || "unknown@pfw.edu"}\n\n${message}`;
-    const mailto = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(
-      subject
-    )}&body=${encodeURIComponent(body)}`;
-
-    // open default mail client with the filled message
-    window.location.href = mailto;
-
-    // small UX delay, then clear
-    setTimeout(() => {
-      setSendingSupport(false);
-      setSupportForm({ subject: "", message: "" });
-      // toast so user gets immediate feedback
-      pushToast("Opening your email app with the message.", "success");
-    }, 300);
-  };
-
-  // --- Filter and sort ride history ---
-  const getFilteredAndSortedRides = () => {
-    let filtered = [...rideHistory];
-
-    // Filter by period
-    if (filterPeriod === "month") {
-      const now = new Date();
-      filtered = filtered.filter((ride) => {
-        const rideDate = new Date(ride.fullDate);
-        return (
-          rideDate.getMonth() === now.getMonth() &&
-          rideDate.getFullYear() === now.getFullYear()
-        );
-      });
-    } else if (filterPeriod === "year") {
-      const now = new Date();
-      filtered = filtered.filter((ride) => {
-        const rideDate = new Date(ride.fullDate);
-        return rideDate.getFullYear() === now.getFullYear();
-      });
-    }
-
-    // Filter by status
-    if (filterStatus !== "all") {
-      filtered = filtered.filter(
-        (ride) => ride.status.toLowerCase() === filterStatus.toLowerCase()
-      );
-    }
-
-    // Sort
-    if (sortBy === "recent") {
-      filtered.sort(
-        (a, b) => new Date(b.fullDate) - new Date(a.fullDate)
-      );
-    } else if (sortBy === "oldest") {
-      filtered.sort(
-        (a, b) => new Date(a.fullDate) - new Date(b.fullDate)
-      );
-    } else if (sortBy === "price-high") {
-      filtered.sort(
-        (a, b) =>
-          parseFloat(b.price.replace("$", "")) -
-          parseFloat(a.price.replace("$", ""))
-      );
-    } else if (sortBy === "price-low") {
-      filtered.sort(
-        (a, b) =>
-          parseFloat(a.price.replace("$", "")) -
-          parseFloat(b.price.replace("$", ""))
-      );
-    }
-
-    return filtered;
-  };
-
-  const filteredRides = getFilteredAndSortedRides();
-
-  // Calculate total rides and total spent
-  const totalRides = rideHistory.length;
-  const totalSpent = rideHistory
-    .reduce((sum, ride) => sum + parseFloat(ride.price.replace("$", "")), 0)
-    .toFixed(2);
-
+  // ---------- RENDER ----------
   return (
     <>
       <div className="navbar-fix">
@@ -559,6 +325,7 @@ export default function UserDashboard() {
 
       <div className={`ud ${sidebarOpen ? "sidebar-open" : "sidebar-closed"}`}>
         <div className="dashboard-layout">
+          {/* SIDEBAR */}
           <aside className="sidebar-nav" aria-label="Section navigation">
             <button
               className="sidebar-toggle fancy"
@@ -578,8 +345,8 @@ export default function UserDashboard() {
                   key={id}
                   className={`sidebar-btn ${activeTab === id ? "active" : ""}`}
                   onClick={() => setActiveTab(id)}
-                  data-tip={label}
                   aria-label={label}
+                  data-tip={label}
                 >
                   <span className="sb-icon" aria-hidden="true">
                     {icon}
@@ -590,31 +357,34 @@ export default function UserDashboard() {
             </nav>
           </aside>
 
+          {/* MAIN CONTENT */}
           <main className="dashboard-main">
             <div className="dashboard-content-wrapper">
-              {/* PROFILE (includes Account + Settings + Support) */}
+              {/* PROFILE TAB */}
               {activeTab === "profile" && (
                 <div className="clean-profile-layout">
+                  <section className="ud-hero">
+                    <h1>Welcome back, {profile.name || "Rider"} 👋</h1>
+                    <p>Manage your rider profile and preferences.</p>
+                  </section>
+
                   <div className="profile-main-card profile-wide">
-                    {/* wider desktop card */}
                     <div className="profile-hero">
                       <div className="profile-hero-left">
                         <div className="profile-avatar-large">
                           <span className="avatar-circle-large">
-                            {profile.name
-                              ? profile.name.charAt(0).toUpperCase()
-                              : "U"}
+                            {(profile.name || "R").charAt(0).toUpperCase()}
                           </span>
                         </div>
                         <div className="profile-hero-info">
-                          <h2>{profile.name || "User"}</h2>
-                          <p>{profile.email}</p>
+                          <h2>{profile.name || "Rider"}</h2>
+                          <p>{profile.email || currentUser.email}</p>
                         </div>
                       </div>
                     </div>
 
                     <div className="profile-tabs">
-                      {["account", "settings", "support"].map((k) => (
+                      {["account", "settings"].map((k) => (
                         <button
                           key={k}
                           className={`profile-tab-btn ${
@@ -623,209 +393,137 @@ export default function UserDashboard() {
                           onClick={() => setProfileSubTab(k)}
                           type="button"
                         >
-                          {k === "account"
-                            ? "Account"
-                            : k === "settings"
-                            ? "Settings"
-                            : "Support"}
+                          {k === "account" ? "Account" : "Settings"}
                         </button>
                       ))}
                     </div>
 
-                    {/* Account – LONG desktop layout */}
                     {profileSubTab === "account" && (
                       <section className="profile-section">
                         <form
                           className="clean-profile-form"
                           onSubmit={onSaveProfile}
                         >
-                          {/* Group 1: Personal Info */}
                           <div className="profile-group">
-                            <div className="group-title">Personal Info</div>
+                            <div className="group-title">
+                              Basic Information
+                            </div>
                             <div className="grid-two">
                               <label className="clean-field">
                                 <span>Full Name</span>
                                 <input
                                   name="name"
                                   type="text"
-                                  placeholder="Your Full Name"
+                                  placeholder="Your name"
                                   value={profile.name}
                                   onChange={onProfileChange}
-                                  disabled={!isEditing}
+                                  disabled={!isEditingProfile}
                                 />
                               </label>
                               <label className="clean-field">
-                                <span>Student ID</span>
-                                <input
-                                  name="studentId"
-                                  type="text"
-                                  placeholder="Your ID"
-                                  value={profile.studentId}
-                                  onChange={onProfileChange}
-                                  disabled={!isEditing}
-                                />
-                              </label>
-                            </div>
-
-                            <div className="grid-two">
-                              <label className="clean-field">
-                                <span>Email</span>
+                                <span>PFW Email</span>
                                 <input
                                   name="email"
                                   type="email"
                                   placeholder="you@pfw.edu"
                                   value={profile.email}
                                   onChange={onProfileChange}
-                                  disabled={!isEditing}
+                                  disabled={!isEditingProfile}
                                 />
                               </label>
+                            </div>
+                            <div className="grid-two">
                               <label className="clean-field">
                                 <span>Phone</span>
                                 <input
                                   name="phone"
                                   type="tel"
-                                  placeholder="(optional)"
+                                  placeholder="(260) 555-0123"
                                   value={profile.phone}
                                   onChange={onProfileChange}
-                                  disabled={!isEditing}
+                                  disabled={!isEditingProfile}
+                                />
+                              </label>
+                              <label className="clean-field">
+                                <span>Campus ID</span>
+                                <input
+                                  name="campusId"
+                                  type="text"
+                                  placeholder="Student ID"
+                                  value={profile.campusId}
+                                  onChange={onProfileChange}
+                                  disabled={!isEditingProfile}
                                 />
                               </label>
                             </div>
-
                             <div className="grid-two">
                               <label className="clean-field">
-                                <span>Department</span>
+                                <span>Major</span>
                                 <input
-                                  name="department"
+                                  name="major"
                                   type="text"
-                                  placeholder="e.g., Computer Science"
-                                  value={profile.department}
+                                  value={profile.major}
                                   onChange={onProfileChange}
-                                  disabled={!isEditing}
+                                  disabled={!isEditingProfile}
                                 />
                               </label>
                               <label className="clean-field">
-                                <span>Year of Study</span>
+                                <span>Grad Year</span>
                                 <input
-                                  name="year"
+                                  name="gradYear"
                                   type="text"
-                                  placeholder="e.g., 2nd Year"
-                                  value={profile.year}
+                                  value={profile.gradYear}
                                   onChange={onProfileChange}
-                                  disabled={!isEditing}
+                                  disabled={!isEditingProfile}
                                 />
                               </label>
                             </div>
-
-                            <div className="grid-two">
-                              <label className="clean-field">
-                                <span>Address</span>
-                                <input
-                                  name="address"
-                                  type="text"
-                                  placeholder="1234 Campus Drive, Fort Wayne"
-                                  value={profile.address}
-                                  onChange={onProfileChange}
-                                  disabled={!isEditing}
-                                />
-                              </label>
-                              <label className="clean-field">
-                                <span>Emergency Contact</span>
-                                <input
-                                  name="emergencyContact"
-                                  type="tel"
-                                  placeholder="Parent/Guardian number"
-                                  value={profile.emergencyContact}
-                                  onChange={onProfileChange}
-                                  disabled={!isEditing}
-                                />
-                              </label>
-                            </div>
-
-                            <div className="grid-two">
-                              <label className="clean-field">
-                                <span>Date of Birth</span>
-                                <input
-                                  name="dob"
-                                  type="date"
-                                  value={profile.dob}
-                                  onChange={onProfileChange}
-                                  disabled={!isEditing}
-                                />
-                              </label>
-                              <label className="clean-field">
-                                <span>Preferred Vehicle Type</span>
-                                <select
-                                  name="preferredVehicle"
-                                  value={profile.preferredVehicle}
-                                  onChange={onProfileChange}
-                                  disabled={!isEditing}
-                                >
-                                  <option value="">Select Vehicle</option>
-                                  <option value="economy">Economy</option>
-                                  <option value="premium">Premium</option>
-                                  <option value="xl">XL</option>
-                                </select>
-                              </label>
-                            </div>
-
-                            <div className="grid-one">
-                              <label className="clean-field">
-                                <span>Bio / About You</span>
-                                <textarea
-                                  name="bio"
-                                  rows={4}
-                                  placeholder="Write a short description about yourself..."
-                                  value={profile.bio}
-                                  onChange={onProfileChange}
-                                  disabled={!isEditing}
-                                />
-                              </label>
-                            </div>
+                            <label className="clean-field">
+                              <span>Address</span>
+                              <input
+                                name="address"
+                                type="text"
+                                placeholder="Fort Wayne, IN"
+                                value={profile.address}
+                                onChange={onProfileChange}
+                                disabled={!isEditingProfile}
+                              />
+                            </label>
                           </div>
 
-                          {/* Group 2: Ride Preferences */}
                           <div className="profile-group">
-                            <div className="group-title">Ride Preferences</div>
-                            <div className="grid-two">
-                              <label className="clean-field">
-                                <span>Default Pickup Notes</span>
-                                <input
-                                  name="pickupNotes"
-                                  type="text"
-                                  placeholder="e.g., Meet near the south entrance"
-                                  value={profile.pickupNotes || ""}
-                                  onChange={onProfileChange}
-                                  disabled={!isEditing}
-                                />
-                              </label>
-                              <label className="clean-field">
-                                <span>Accessibility Needs</span>
-                                <input
-                                  name="accessNeeds"
-                                  type="text"
-                                  placeholder="e.g., Wheelchair access"
-                                  value={profile.accessNeeds || ""}
-                                  onChange={onProfileChange}
-                                  disabled={!isEditing}
-                                />
-                              </label>
-                            </div>
+                            <div className="group-title">About</div>
+                            <label className="clean-field">
+                              <span>Bio / Notes</span>
+                              <textarea
+                                name="bio"
+                                rows="3"
+                                placeholder="Anything you'd like drivers to know..."
+                                value={profile.bio}
+                                onChange={onProfileChange}
+                                disabled={!isEditingProfile}
+                                style={{
+                                  width: "100%",
+                                  padding: "12px 14px",
+                                  border: "1px solid #dedede",
+                                  borderRadius: "12px",
+                                  fontSize: "14px",
+                                  fontFamily: "inherit",
+                                  resize: "vertical",
+                                  outline: "none",
+                                }}
+                              />
+                            </label>
                           </div>
 
                           <div className="profile-actions">
-                            {!isEditing ? (
+                            {!isEditingProfile ? (
                               <button
                                 className="btn"
                                 type="button"
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  console.log("Edit button clicked!");
-                                  toggleEditMode();
-                                }}
+                                onClick={() => setIsEditingProfile(true)}
                               >
-                                Edit
+                                Edit Profile
                               </button>
                             ) : (
                               <>
@@ -834,19 +532,12 @@ export default function UserDashboard() {
                                   type="submit"
                                   disabled={savingProfile}
                                 >
-                                  {savingProfile
-                                    ? "Saving..."
-                                    : "Save Changes"}
+                                  {savingProfile ? "Saving..." : "Save Changes"}
                                 </button>
                                 <button
                                   className="btn ghost"
                                   type="button"
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    console.log("Cancel button clicked!");
-                                    toggleEditMode();
-                                  }}
+                                  onClick={() => setIsEditingProfile(false)}
                                 >
                                   Cancel
                                 </button>
@@ -857,22 +548,20 @@ export default function UserDashboard() {
                       </section>
                     )}
 
-                    {/* Settings (inside Profile) */}
                     {profileSubTab === "settings" && (
                       <section className="profile-section">
-                        <header className="ud-head"></header>
                         <form className="ud-form" onSubmit={onSaveSettings}>
                           <div className="setting-item">
                             <div>
-                              <strong>Wheelchair Access</strong>
-                              <p>Request wheelchair-accessible vehicles</p>
+                              <strong>Email Notifications</strong>
+                              <p>Get email updates about your rides</p>
                             </div>
                             <label className="toggle">
                               <input
                                 type="checkbox"
-                                checked={settings.wheelchairAccess}
+                                checked={settings.emailNotifications}
                                 onChange={() =>
-                                  onToggleSetting("wheelchairAccess")
+                                  onToggleSetting("emailNotifications")
                                 }
                               />
                               <span />
@@ -880,31 +569,29 @@ export default function UserDashboard() {
                           </div>
                           <div className="setting-item">
                             <div>
-                              <strong>Ride Alerts</strong>
-                              <p>Receive notifications for ride updates</p>
+                              <strong>SMS Alerts</strong>
+                              <p>Receive SMS alerts for driver arrival</p>
                             </div>
                             <label className="toggle">
                               <input
                                 type="checkbox"
-                                checked={settings.rideAlerts}
-                                onChange={() =>
-                                  onToggleSetting("rideAlerts")
-                                }
+                                checked={settings.smsAlerts}
+                                onChange={() => onToggleSetting("smsAlerts")}
                               />
                               <span />
                             </label>
                           </div>
                           <div className="setting-item">
                             <div>
-                              <strong>Marketing Emails</strong>
-                              <p>Get news and promotions</p>
+                              <strong>Ride Reminders</strong>
+                              <p>Reminder before scheduled rides</p>
                             </div>
                             <label className="toggle">
                               <input
                                 type="checkbox"
-                                checked={settings.marketing}
+                                checked={settings.rideReminders}
                                 onChange={() =>
-                                  onToggleSetting("marketing")
+                                  onToggleSetting("rideReminders")
                                 }
                               />
                               <span />
@@ -920,638 +607,292 @@ export default function UserDashboard() {
                         </form>
                       </section>
                     )}
-
-                    {/* Support (inside Profile) */}
-                    {profileSubTab === "support" && (
-                      <section className="profile-section">
-                        <header className="ud-head"></header>
-
-                        <div className="support-intro">
-                          <p>
-                            You can reach our support team anytime via email at{" "}
-                            <strong>support@mastoride.com</strong>.
-                          </p>
-                        </div>
-
-                        <form
-                          className="support-form"
-                          onSubmit={onSupportSubmit}
-                        >
-                          <label className="clean-field">
-                            <span>Subject</span>
-                            <input
-                              type="text"
-                              placeholder="Brief summary of the issue"
-                              value={supportForm.subject}
-                              onChange={(e) =>
-                                setSupportForm((s) => ({
-                                  ...s,
-                                  subject: e.target.value,
-                                }))
-                              }
-                              required
-                            />
-                          </label>
-
-                          <label className="clean-field">
-                            <span>Message</span>
-                            <textarea
-                              rows={6}
-                              placeholder="Describe what happened, steps to reproduce, or add ride details…"
-                              value={supportForm.message}
-                              onChange={(e) =>
-                                setSupportForm((s) => ({
-                                  ...s,
-                                  message: e.target.value,
-                                }))
-                              }
-                              required
-                            />
-                          </label>
-
-                          <div className="profile-actions">
-                            <button
-                              className="btn"
-                              type="submit"
-                              disabled={sendingSupport}
-                            >
-                              {sendingSupport
-                                ? "Opening Mail…"
-                                : "Contact Support"}
-                            </button>
-                            <button
-                              className="btn ghost"
-                              type="button"
-                              onClick={() =>
-                                setSupportForm({ subject: "", message: "" })
-                              }
-                            >
-                              Clear
-                            </button>
-                          </div>
-                        </form>
-                      </section>
-                    )}
                   </div>
                 </div>
               )}
 
-              {/* BOOK */}
+              {/* BOOK RIDE TAB */}
               {activeTab === "book" && (
                 <div className="book-layout">
-                  <div className="book-form-col">
-                    <section className="ud-hero">
-                      <h1>Welcome back, {displayName || "user"}! 👋</h1>
-                      <p>Plan your next ride and estimate your fare in seconds.</p>
-                    </section>
-                    <section className="ud-panel">
+                  <section className="ud-hero">
+                    <h1>Book a Ride 🚗</h1>
+                    <p>Choose your pickup and drop-off to get started.</p>
+                  </section>
+
+                  <div className="ride-grid">
+                    <section className="ud-panel ride-form">
                       <header className="ud-head">
-                        <h2>Book a Ride 🚗</h2>
+                        <h2>Ride Details</h2>
+                        <p>Fill in the details and estimate your fare.</p>
                       </header>
-                      <form
-                        className="ud-form bookride"
-                        onSubmit={(e) => e.preventDefault()}
-                      >
-                        <label className="ud-field">
-                          <span>Pickup Location</span>
+
+                      <form onSubmit={handleEstimateFare} className="ud-form">
+                        <label className="clean-field">
+                          <span>Pickup</span>
                           <input
+                            name="pickup"
                             type="text"
-                            placeholder="e.g., Walb Student Union"
+                            placeholder="e.g. PFW Campus Center"
                             value={ride.pickup}
-                            onChange={(e) =>
-                              setRide({ ...ride, pickup: e.target.value })
-                            }
+                            onChange={handleRideChange}
                           />
                         </label>
-                        <label className="ud-field">
-                          <span>Drop-off Location</span>
+                        <label className="clean-field">
+                          <span>Drop-off</span>
                           <input
+                            name="dropoff"
                             type="text"
-                            placeholder="e.g., Coliseum Blvd"
+                            placeholder="e.g. Jefferson Pointe"
                             value={ride.dropoff}
-                            onChange={(e) =>
-                              setRide({ ...ride, dropoff: e.target.value })
-                            }
+                            onChange={handleRideChange}
                           />
                         </label>
-                        <div className="ud-row">
-                          <label className="ud-field">
+
+                        <div className="grid-two">
+                          <label className="clean-field">
                             <span>Date</span>
                             <input
+                              name="date"
                               type="date"
                               value={ride.date}
-                              onChange={(e) =>
-                                setRide({ ...ride, date: e.target.value })
-                              }
+                              onChange={handleRideChange}
                             />
                           </label>
-                          <label className="ud-field">
+                          <label className="clean-field">
                             <span>Time</span>
                             <input
+                              name="time"
                               type="time"
                               value={ride.time}
-                              onChange={(e) =>
-                                setRide({ ...ride, time: e.target.value })
-                              }
+                              onChange={handleRideChange}
                             />
                           </label>
                         </div>
-                        <div className="ud-row">
-                          <label className="ud-field">
-                            <span>Passengers</span>
+
+                        <label className="clean-field">
+                          <span>Passengers</span>
+                          <input
+                            name="passengers"
+                            type="number"
+                            min="1"
+                            max="4"
+                            value={ride.passengers}
+                            onChange={handleRideChange}
+                          />
+                        </label>
+
+                        <button className="btn wide" type="submit">
+                          Estimate Fare &amp; Continue
+                        </button>
+                      </form>
+                    </section>
+
+                    <section className="ud-panel">
+                      <header className="ud-head">
+                        <h2>Map Preview</h2>
+                        <p>Approximate route between your locations.</p>
+                      </header>
+                      <MapBlock
+                        pickup={ride.pickup}
+                        dropoff={ride.dropoff}
+                        height={320}
+                      />
+                    </section>
+                  </div>
+                </div>
+              )}
+
+              {/* PAYMENT TAB */}
+              {activeTab === "payment" && (
+                <div className="payment-layout">
+                  <section className="ud-hero">
+                    <h1>Complete Your Payment 💳</h1>
+                    <p>Review your ride details and confirm the booking.</p>
+                  </section>
+
+                  <div className="ride-grid">
+                    <section className="ud-panel">
+                      <header className="ud-head">
+                        <h2>Ride Summary</h2>
+                      </header>
+                      <div className="summary-block">
+                        <p>
+                          <strong>Pickup:</strong> {ride.pickup || "—"}
+                        </p>
+                        <p>
+                          <strong>Drop-off:</strong> {ride.dropoff || "—"}
+                        </p>
+                        <p>
+                          <strong>Date:</strong> {ride.date || "—"}
+                        </p>
+                        <p>
+                          <strong>Time:</strong> {ride.time || "—"}
+                        </p>
+                        <p>
+                          <strong>Passengers:</strong> {ride.passengers || 1}
+                        </p>
+                        <p className="fare-line">
+                          <strong>Estimated Fare:</strong>{" "}
+                          {fare ? `$${fare}` : "Not estimated yet"}
+                        </p>
+                      </div>
+                    </section>
+
+                    <section className="ud-panel">
+                      <header className="ud-head">
+                        <h2>Card Details</h2>
+                        <p>Demo-only — not a real payment.</p>
+                      </header>
+                      <form onSubmit={handleConfirmPayment} className="ud-form">
+                        <label className="clean-field">
+                          <span>Cardholder Name</span>
+                          <input
+                            type="text"
+                            name="cardHolder"
+                            placeholder="Name on card"
+                            value={card.cardHolder}
+                            onChange={handleCardChange}
+                          />
+                        </label>
+                        <label className="clean-field">
+                          <span>Card Number</span>
+                          <input
+                            type="text"
+                            name="cardNumber"
+                            placeholder="1234 5678 9012 3456"
+                            value={card.cardNumber}
+                            onChange={handleCardChange}
+                          />
+                        </label>
+                        <div className="grid-two">
+                          <label className="clean-field">
+                            <span>Expiry</span>
                             <input
-                              type="number"
-                              min="1"
-                              max="6"
-                              value={ride.passengers}
-                              onChange={(e) =>
-                                setRide({
-                                  ...ride,
-                                  passengers: parseInt(
-                                    e.target.value || "1",
-                                    10
-                                  ),
-                                })
-                              }
+                              type="text"
+                              name="expiry"
+                              placeholder="MM/YY"
+                              value={card.expiry}
+                              onChange={handleCardChange}
                             />
                           </label>
-                          <label className="ud-field">
-                            <span>Vehicle Type</span>
-                            <select
-                              value={ride.vehicleType}
-                              onChange={(e) =>
-                                setRide({
-                                  ...ride,
-                                  vehicleType: e.target.value,
-                                })
-                              }
-                            >
-                              {Object.entries(VEHICLES).map(([key, v]) => (
-                                <option key={key} value={key}>
-                                  {v.label}
-                                </option>
-                              ))}
-                            </select>
+                          <label className="clean-field">
+                            <span>CVV</span>
+                            <input
+                              type="password"
+                              name="cvv"
+                              placeholder="123"
+                              value={card.cvv}
+                              onChange={handleCardChange}
+                            />
                           </label>
-                        </div>
-                        <div className="br-actions">
-                          <button
-                            type="button"
-                            onClick={handleEstimateFare}
-                            className="estimate-btn"
-                            disabled={estimating}
-                          >
-                            {estimating
-                              ? "Estimating…"
-                              : fare
-                              ? `💵 Estimated Fare: $${fare}`
-                              : "Estimate Fare"}
-                          </button>
                         </div>
                         <button
-                          className="btn wide proceed-payment-btn"
-                          onClick={() => setActiveTab("payment")}
-                          type="button"
+                          className="btn wide"
+                          type="submit"
+                          disabled={isSubmittingPayment}
                         >
-                          Proceed to Payment →
+                          {isSubmittingPayment
+                            ? "Processing..."
+                            : `Pay Now ${fare ? `($${fare})` : ""}`}
                         </button>
                       </form>
                     </section>
                   </div>
-                  <div className="book-map-col">
-                    <MapBlock
-                      pickupText={ride.pickup}
-                      dropoffText={ride.dropoff}
-                      height={600}
-                    />
-                  </div>
                 </div>
               )}
 
-              {/* PAYMENT */}
-              {activeTab === "payment" && (
-                <div className="payment-page-wrapper">
-                  <section className="payment-hero">
-                    <h1>Complete Your Payment</h1>
-                    <p>Enter your card details to confirm your ride</p>
-                  </section>
-
-                  <section className="payment-card-form-container">
-                    <div className="ride-summary-box">
-                      <h3>Ride Summary</h3>
-
-                      {/* Map showing pickup and dropoff */}
-                      <div className="ride-summary-map">
-                        <MapBlock
-                          pickupText={ride.pickup}
-                          dropoffText={ride.dropoff}
-                          height={250}
-                        />
-                      </div>
-
-                      <div className="summary-row">
-                        <span>📍 Pickup:</span>
-                        <span>{ride.pickup || "Not set"}</span>
-                      </div>
-                      <div className="summary-row">
-                        <span>🎯 Drop-off:</span>
-                        <span>{ride.dropoff || "Not set"}</span>
-                      </div>
-                      <div className="summary-row">
-                        <span>📅 Date:</span>
-                        <span>{ride.date || "Not set"}</span>
-                      </div>
-                      <div className="summary-row">
-                        <span>🕐 Time:</span>
-                        <span>{ride.time || "Not set"}</span>
-                      </div>
-                      <div className="summary-row total-row">
-                        <span>💰 Total Fare:</span>
-                        <span className="fare-total">${fare || "0.00"}</span>
-                      </div>
-                    </div>
-
-                    <form
-                      className="card-payment-form"
-                      onSubmit={handlePayNow}
-                    >
-                      <h2 className="form-title">Card Details</h2>
-
-                      <div className="field">
-                        <label>Cardholder Name</label>
-                        <input
-                          type="text"
-                          value={cardDetails.cardholderName}
-                          onChange={(e) =>
-                            setCardDetails({
-                              ...cardDetails,
-                              cardholderName: e.target.value,
-                            })
-                          }
-                          placeholder="John Doe"
-                          required
-                        />
-                      </div>
-
-                      <div className="field">
-                        <label>Card Number</label>
-                        <input
-                          type="text"
-                          value={cardDetails.cardNumber}
-                          onChange={(e) => {
-                            const formatted = formatCardNumber(e.target.value);
-                            if (formatted.replace(/\s/g, "").length <= 16) {
-                              setCardDetails({
-                                ...cardDetails,
-                                cardNumber: formatted,
-                              });
-                            }
-                          }}
-                          placeholder="1234 5678 9012 3456"
-                          maxLength="19"
-                          required
-                        />
-                        <div className="card-icons">
-                          <span className="card-icon">💳</span>
-                        </div>
-                      </div>
-
-                      <div className="form-row-2col">
-                        <div className="field">
-                          <label>Expiry Date</label>
-                          <input
-                            type="text"
-                            value={cardDetails.expiryDate}
-                            onChange={(e) => {
-                              const formatted = formatExpiryDate(
-                                e.target.value
-                              );
-                              if (formatted.length <= 5) {
-                                setCardDetails({
-                                  ...cardDetails,
-                                  expiryDate: formatted,
-                                });
-                              }
-                            }}
-                            placeholder="MM/YY"
-                            maxLength="5"
-                            required
-                          />
-                        </div>
-                        <div className="field">
-                          <label>CVV</label>
-                          <input
-                            type="text"
-                            value={cardDetails.cvv}
-                            onChange={(e) => {
-                              const value = e.target.value.replace(/\D/g, "");
-                              if (value.length <= 4) {
-                                setCardDetails({
-                                  ...cardDetails,
-                                  cvv: value,
-                                });
-                              }
-                            }}
-                            placeholder="123"
-                            maxLength="4"
-                            required
-                          />
-                        </div>
-                      </div>
-
-                      <button
-                        type="submit"
-                        className="btn primary pay-now-btn"
-                        disabled={processingPayment}
-                      >
-                        {processingPayment
-                          ? "Processing..."
-                          : `Pay Now $${fare || "0.00"}`}
-                      </button>
-
-                      <div className="payment-security-note">
-                        <span className="security-icon">🔒</span>
-                        <span>
-                          Your payment information is secure and encrypted
-                        </span>
-                      </div>
-                    </form>
-                  </section>
-
-                  {paymentConfirmed && (
-                    <div
-                      className="payment-overlay"
-                      onClick={() => setPaymentConfirmed(false)}
-                    >
-                      <div
-                        className="payment-confirmed-card"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <span className="payment-confirmed-icon">🎉</span>
-                        <h3 className="payment-confirmed-title">
-                          RIDE CONFIRMED YAY!
-                        </h3>
-                        <p className="payment-confirmed-text">
-                          Your ride has been booked successfully!
-                        </p>
-                        <button
-                          className="btn wide payment-confirmed-close"
-                          onClick={() => setPaymentConfirmed(false)}
-                        >
-                          Close
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* REWARDS */}
+              {/* REWARDS TAB */}
               {activeTab === "rewards" && (
-                <div className="rewards-page-wrapper">
-                  <section className="rewards-hero">
-                    <h1>Rewards & Badges</h1>
-                    <p>
-                      Track your progress, earn rewards, and unlock exclusive
-                      perks{" "}
-                    </p>
+                <div className="rewards-layout">
+                  <section className="ud-hero">
+                    <h1>Your Rewards 🏅</h1>
+                    <p>Collect fun badges as you keep riding with Masto Ride.</p>
                   </section>
-
-                  <div className="rewards-points-card">
-                    <div className="points-display">
-                      <span className="trophy-icon">🏆</span>
-                      <span className="points-number">250 Points</span>
+                  <section className="ud-panel">
+                    <header className="ud-head">
+                      <h2>Badges</h2>
+                    </header>
+                    <div className="badges-grid">
+                      {availableBadges.map((b) => (
+                        <div
+                          key={b.id}
+                          className={`badge-card ${
+                            b.earned ? "earned" : "locked"
+                          }`}
+                        >
+                          <div className="badge-icon">
+                            {b.earned ? "🏅" : "🔒"}
+                          </div>
+                          <div className="badge-label">{b.label}</div>
+                          <div className="badge-status">
+                            {b.earned ? "Unlocked" : "Locked"}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                    <p className="points-subtitle">
-                      Keep riding to reach <strong>Gold Tier</strong>
-                    </p>
-                    <button className="redeem-points-btn">
-                      Redeem Points
-                    </button>
-                  </div>
-
-                  <section className="badges-section">
-                    <h2 className="badges-heading">
-                      <span className="badge-emoji"></span> Available Badges
-                    </h2>
-                    {availableBadges.length > 0 ? (
-                      <div className="badges-grid">
-                        {availableBadges.map((badge) => (
-                          <div
-                            key={badge.id}
-                            className="badge-card available"
-                          >
-                            <div className="badge-icon">{badge.icon}</div>
-                            <h3 className="badge-title">{badge.title}</h3>
-                            {badge.date && (
-                              <p className="badge-date">{badge.date}</p>
-                            )}
-                            {badge.description && (
-                              <p className="badge-description">
-                                {badge.description}
-                              </p>
-                            )}
-                            <button
-                              className="use-badge-btn"
-                              onClick={() => handleUseBadge(badge.id)}
-                            >
-                              Use Badge
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="empty-badges">
-                        <p>
-                          {" "}
-                          No available badges right now. Keep riding to earn
-                          more!
-                        </p>
-                      </div>
-                    )}
-                  </section>
-
-                  <section className="badges-section">
-                    <h2 className="badges-heading">
-                      <span className="badge-emoji"></span> Used Badges
-                    </h2>
-                    {usedBadges.length > 0 ? (
-                      <div className="badges-grid">
-                        {usedBadges.map((badge) => (
-                          <div key={badge.id} className="badge-card used">
-                            <div className="badge-icon">{badge.icon}</div>
-                            <h3 className="badge-title">{badge.title}</h3>
-                            <p className="badge-date">{badge.date}</p>
-                            {badge.description && (
-                              <p className="badge-description">
-                                {badge.description}
-                              </p>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="empty-badges">
-                        <p>No used badges yet</p>
-                      </div>
-                    )}
                   </section>
                 </div>
               )}
 
-              {/* HISTORY — centered, desktop-wide cards */}
+              {/* HISTORY TAB */}
               {activeTab === "history" && (
-                <section className="ud-panel history-panel">
-                  {/* Stats Cards */}
-                  <div className="history-stats-grid">
-                    <div className="history-stat-card">
-                      <div className="stat-icon">🚗</div>
-                      <div className="stat-content">
-                        <div className="stat-value">{totalRides}</div>
-                        <div className="stat-label">TOTAL RIDES</div>
-                      </div>
-                    </div>
-                    <div className="history-stat-card">
-                      <div className="stat-icon">💰</div>
-                      <div className="stat-content">
-                        <div className="stat-value">${totalSpent}</div>
-                        <div className="stat-label">TOTAL SPENT</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Filter Bar */}
-                  <div className="history-filter-bar">
-                    <div className="filter-group">
-                      <label className="filter-label">Filter:</label>
-                      <select
-                        className="filter-select"
-                        value={filterPeriod}
-                        onChange={(e) => setFilterPeriod(e.target.value)}
-                      >
-                        <option value="all">All Rides</option>
-                        <option value="month">This Month</option>
-                        <option value="year">This Year</option>
-                      </select>
-                    </div>
-                    <div className="filter-group">
-                      <label className="filter-label">Status:</label>
-                      <select
-                        className="filter-select"
-                        value={filterStatus}
-                        onChange={(e) => setFilterStatus(e.target.value)}
-                      >
-                        <option value="all">All</option>
-                        <option value="completed">Completed</option>
-                        <option value="cancelled">Cancelled</option>
-                      </select>
-                    </div>
-                    <div className="filter-group">
-                      <label className="filter-label">Sort by:</label>
-                      <select
-                        className="filter-select"
-                        value={sortBy}
-                        onChange={(e) => setSortBy(e.target.value)}
-                      >
-                        <option value="recent">Recent First</option>
-                        <option value="oldest">Oldest First</option>
-                        <option value="price-high">Price: High to Low</option>
-                        <option value="price-low">Price: Low to High</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Ride Cards */}
-                  <div className="history-stack">
-                    {filteredRides.length > 0 ? (
-                      filteredRides.map((item, idx) => (
-                        <div
-                          key={item.id}
-                          className={`ride-history-card ride-card-variant-${
-                            (idx % 4) + 1
-                          }`}
-                          style={{ "--stagger": `${idx * 100}ms` }}
-                        >
-                          <div className="ride-card-header">
-                            <div className="ride-date-badge">
-                              📅 {item.date}
-                            </div>
-                            <div className="ride-status-badge">
-                              ✅ {item.status}
-                            </div>
-                          </div>
-
-                          <div className="ride-card-body">
-                            <div className="ride-route">
-                              <div className="route-point">
-                                <div className="route-icon pickup-icon">
-                                  📍
-                                </div>
-                                <div className="route-details">
-                                  <div className="route-label">PICKUP</div>
-                                  <div className="route-location">
-                                    {item.pickup}
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div className="route-line" />
-
-                              <div className="route-point">
-                                <div className="route-icon dropoff-icon">
-                                  🎯
-                                </div>
-                                <div className="route-details">
-                                  <div className="route-label">DROP-OFF</div>
-                                  <div className="route-location">
-                                    {item.dropoff}
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="ride-card-info">
-                              <div className="info-row">
-                                <span className="info-icon">📅</span>
-                                <span className="info-text">
-                                  Date Booked: {item.fullDate}
-                                </span>
-                              </div>
-                              <div className="info-row">
-                                <span className="info-icon">💳</span>
-                                <span className="info-text">
-                                  Payment: {item.paymentMethod}
-                                </span>
-                              </div>
-                              <div className="info-row">
-                                <span className="info-icon">📌</span>
-                                <span className="info-text">
-                                  {item.destination}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="ride-card-footer">
-                            <div className="ride-price">
-                              <span className="price-label">TOTAL FARE</span>
-                              <span className="price-amount">{item.price}</span>
-                            </div>
-                          </div>
-                        </div>
-                      ))
+                <div className="history-layout">
+                  <section className="ud-hero">
+                    <h1>Ride History 🕘</h1>
+                    <p>Quick view of rides you’ve booked (demo data).</p>
+                  </section>
+                  <section className="ud-panel">
+                    <header className="ud-head">
+                      <h2>Past Rides</h2>
+                    </header>
+                    {rideHistory.length === 0 ? (
+                      <p>You haven&apos;t booked any rides yet.</p>
                     ) : (
-                      <div className="empty-history">
-                        <p>📭 No rides found matching your filters</p>
+                      <div className="history-list">
+                        {rideHistory.map((r) => (
+                          <div key={r.id} className="history-item">
+                            <div>
+                              <strong>
+                                {r.pickup} → {r.dropoff}
+                              </strong>
+                              <div className="history-meta">
+                                {r.date} at {r.time} • {r.passengers}{" "}
+                                passenger(s)
+                              </div>
+                            </div>
+                            <div className="history-fare">${r.fare}</div>
+                          </div>
+                        ))}
                       </div>
                     )}
-                  </div>
-                </section>
+                  </section>
+                </div>
               )}
             </div>
           </main>
         </div>
       </div>
+
+      {/* SUCCESS MODAL */}
+      {showPaymentSuccess && (
+        <div className="payment-overlay" onClick={closeSuccessModal}>
+          <div
+            className="payment-confirmed-card"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="confetti-icon">🎉</div>
+            <h2>RIDE CONFIRMED YAY!</h2>
+            <p>Your ride has been booked successfully!</p>
+            <button
+              className="btn wide"
+              type="button"
+              onClick={closeSuccessModal}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </>
   );
 }
